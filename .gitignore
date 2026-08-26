@@ -1,0 +1,7 @@
+# Build artifacts
+/trustmebro
+/dist/
+
+# Go
+*.test
+*.out
