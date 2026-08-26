@@ -5,7 +5,7 @@
 
   [![Release](https://img.shields.io/github/v/release/DavidCarliez/trustmebro?style=flat-square&color=8b5cf6)](https://github.com/DavidCarliez/trustmebro/releases/latest)
   [![Go](https://img.shields.io/badge/Go-1.27-00ADD8?style=flat-square&logo=go&logoColor=white)](go.mod)
-  [![License](https://img.shields.io/github/license/DavidCarliez/trustmebro?style=flat-square&color=22c55e)](LICENSE)
+  [![License](https://img.shields.io/badge/license-MIT-22c55e?style=flat-square)](LICENSE)
   [![Platforms](https://img.shields.io/badge/platform-Linux%20%7C%20macOS-64748b?style=flat-square)](#installation)
 
   **Rule-driven command output interception for LLM harnesses.**
