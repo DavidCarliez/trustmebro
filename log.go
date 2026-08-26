@@ -43,13 +43,23 @@ func appendLog(path string, e entry) {
 	if err != nil {
 		return
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return
 	}
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if filepath.Clean(path) == filepath.Clean(expandHome(defaultConfig().LogFile)) {
+		_ = os.Chmod(dir, 0o700)
+	}
+
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return
 	}
-	defer f.Close()
-	f.Write(append(b, '\n'))
+	_ = f.Chmod(0o600)
+	if _, err := f.Write(append(b, '\n')); err != nil {
+		_ = f.Close()
+		return
+	}
+	_ = f.Close()
 }

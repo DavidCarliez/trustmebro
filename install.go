@@ -9,9 +9,9 @@ import (
 )
 
 const (
-	binRel  = ".local/bin"
-	shimRel = ".local/share/trustmebro/shims"
-	cfgRel  = ".config/trustmebro/config.yaml"
+	binRel   = ".local/bin"
+	shimRel  = ".local/share/trustmebro/shims"
+	cfgRel   = ".config/trustmebro/config.yaml"
 	stateRel = ".local/state/trustmebro"
 )
 
@@ -138,6 +138,14 @@ func cmdInstall(args []string) int {
 			noRC = true
 		}
 	}
+	cfg, errs := LoadConfig()
+	if len(errs) > 0 {
+		fmt.Fprintln(os.Stderr, "trustmebro: invalid config; installation aborted:")
+		for _, err := range errs {
+			fmt.Fprintf(os.Stderr, "  %s\n", err)
+		}
+		return 1
+	}
 	home := homeDir()
 	binPath := filepath.Join(home, binRel, "trustmebro")
 	shimDir := filepath.Join(home, shimRel)
@@ -164,10 +172,6 @@ func cmdInstall(args []string) int {
 	}
 
 	// 2. Shims.
-	cfg, _ := LoadConfig()
-	if len(cfg.ShimCommands) == 0 {
-		cfg = defaultConfig()
-	}
 	if err := os.MkdirAll(shimDir, 0o755); err != nil {
 		fmt.Fprintln(os.Stderr, "trustmebro:", err)
 		return 1
@@ -315,6 +319,12 @@ func pathPosition(dir string) int {
 
 func cmdListRules() int {
 	cfg, errs := LoadConfig()
+	if len(errs) > 0 {
+		for _, err := range errs {
+			fmt.Fprintln(os.Stderr, "error:", err)
+		}
+		return 1
+	}
 	if len(cfg.Rules) == 0 {
 		fmt.Println("no rules configured")
 	}
@@ -322,9 +332,6 @@ func cmdListRules() int {
 		r := &cfg.Rules[i]
 		fmt.Printf("%2d. %-32s cmd=%-10s action=%-10s domain=%q domain_re=%q qtype=%q args=%v\n",
 			i+1, r.Name, orStar(r.Command), modeFor(r), r.Match.Domain, r.Match.DomainRe, r.Match.QType, r.Match.Args)
-	}
-	for _, e := range errs {
-		fmt.Fprintln(os.Stderr, "error:", e)
 	}
 	return 0
 }

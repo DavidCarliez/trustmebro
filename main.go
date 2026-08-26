@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 )
 
-const version = "0.1.0"
+const version = "0.1.1"
 
 func main() {
 	name := filepath.Base(os.Args[0])

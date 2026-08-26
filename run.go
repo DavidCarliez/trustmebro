@@ -10,19 +10,24 @@ import (
 	"syscall"
 )
 
+const exitConfigError = 78
+
 // shimMain is the entry point when trustmebro is invoked under a shim name.
 // It resolves the rule, applies it, and exits with the appropriate code.
 func shimMain(name string, args []string) int {
 	cfg, errs := LoadConfig()
-	if len(errs) > 0 {
-		fmt.Fprintf(os.Stderr, "trustmebro: config errors (passing through):\n")
-		for _, e := range errs {
-			fmt.Fprintf(os.Stderr, "  %s\n", e)
-		}
-	}
 
+	// The disable flag is an explicit operator escape hatch. It remains usable
+	// even when the config is malformed.
 	if os.Getenv("TRUSTMEBRO_DISABLE") == "1" {
 		return execReal(name, args, cfg, "")
+	}
+	if len(errs) > 0 {
+		fmt.Fprintln(os.Stderr, "trustmebro: invalid config; command not executed:")
+		for _, err := range errs {
+			fmt.Fprintf(os.Stderr, "  %s\n", err)
+		}
+		return exitConfigError
 	}
 
 	q := ParseQuery(name, args)

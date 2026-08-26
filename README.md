@@ -170,6 +170,8 @@ rules:
 
 Rules are checked in file order. The first matching rule wins, and every configured match field must succeed.
 
+Configuration is parsed strictly. Unknown fields, unsafe shim names, invalid actions, and malformed rules make `trustmebro check` fail. If an installed shim encounters an invalid config, it blocks the command and exits with status 78. Set `TRUSTMEBRO_DISABLE=1` only when you explicitly need to bypass the config and run the real command.
+
 | Field | Meaning |
 |---|---|
 | `command` | Shim name. Empty or `*` matches any shimmed command. |

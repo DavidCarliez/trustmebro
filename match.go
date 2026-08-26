@@ -250,6 +250,9 @@ func globRegexpMatch(glob, s string) bool {
 
 // matchRule returns the first rule matching q, or nil.
 func matchRule(cfg *Config, q *Query) *Rule {
+	if q == nil {
+		return nil
+	}
 	for i := range cfg.Rules {
 		if cfg.Rules[i].matches(q) {
 			return &cfg.Rules[i]

@@ -245,7 +245,7 @@ func TestResolveRealSkipsSelf(t *testing.T) {
 	real := filepath.Join(realDir, "dig")
 	os.WriteFile(real, []byte("#!/bin/sh\nexit 0\n"), 0o755)
 
-	os.Setenv("TRUSTMEBRO_REAL_DIR", "")
+	t.Setenv("TRUSTMEBRO_REAL_DIR", "")
 	t.Setenv("PATH", shimDir+":"+realDir)
 
 	// A decoy symlink that resolves to something named trustmebro.
@@ -265,5 +265,79 @@ func TestReverseDomain(t *testing.T) {
 	}
 	if got := reverseDomain("2001:db8::1"); !strings.HasSuffix(got, ".ip6.arpa") || strings.Contains(got, "::") {
 		t.Errorf("v6 = %q", got)
+	}
+}
+
+func TestMatchRuleNil(t *testing.T) {
+	if got := matchRule(defaultConfig(), nil); got != nil {
+		t.Fatalf("matchRule(nil) = %+v, want nil", got)
+	}
+}
+
+func TestLoadConfigRejectsUnknownFields(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte("defaut_action: reject\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TRUSTMEBRO_CONFIG", path)
+
+	_, errs := LoadConfig()
+	if len(errs) == 0 || !strings.Contains(strings.Join(errs, "\n"), "field defaut_action not found") {
+		t.Fatalf("LoadConfig errors = %v, want unknown-field error", errs)
+	}
+}
+
+func TestLoadConfigValidatesRulesAndShims(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	config := `shim_commands:
+  - ../dig
+rules:
+  - name: broken
+    command: dig
+    action: rewite
+    exit: 999
+    rewrite:
+      - find: one
+        regex: two
+`
+	if err := os.WriteFile(path, []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TRUSTMEBRO_CONFIG", path)
+
+	_, errs := LoadConfig()
+	joined := strings.Join(errs, "\n")
+	for _, want := range []string{
+		"must be a plain executable name",
+		"action \"rewite\"",
+		"exit must be between 0 and 255",
+		"must set exactly one of find or regex",
+		"cannot be combined",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("LoadConfig errors missing %q:\n%s", want, joined)
+		}
+	}
+}
+
+func TestAppendLogPermissions(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "state")
+	path := filepath.Join(dir, "log.jsonl")
+	code := 0
+	appendLog(path, entry{Cmd: "dig", Mode: "spoof", Exit: &code})
+
+	dirInfo, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := dirInfo.Mode().Perm(); got != 0o700 {
+		t.Errorf("log directory mode = %o, want 700", got)
+	}
+	fileInfo, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := fileInfo.Mode().Perm(); got != 0o600 {
+		t.Errorf("log file mode = %o, want 600", got)
 	}
 }

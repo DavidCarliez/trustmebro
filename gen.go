@@ -220,7 +220,11 @@ func applyRewrites(ops []RewriteOp, s string) string {
 	for _, op := range ops {
 		switch {
 		case op.Regex != "":
-			if re, err := regexp.Compile(op.Regex); err == nil {
+			re := op.compiled
+			if re == nil {
+				re, _ = regexp.Compile(op.Regex)
+			}
+			if re != nil {
 				s = re.ReplaceAllString(s, op.Replace)
 			}
 		case op.Find != "":
