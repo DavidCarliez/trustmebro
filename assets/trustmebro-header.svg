@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-labelledby="title desc">
+  <title id="title">TrustMeBro</title>
+  <desc id="desc">TrustMeBro logo and a terminal showing a spoofed DNS ownership marker.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b1020"/>
+      <stop offset="0.55" stop-color="#111936"/>
+      <stop offset="1" stop-color="#17122e"/>
+    </linearGradient>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#61dafb"/>
+      <stop offset="1" stop-color="#a78bfa"/>
+    </linearGradient>
+    <linearGradient id="shield" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1f305f"/>
+      <stop offset="1" stop-color="#35245f"/>
+    </linearGradient>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" fill="none" stroke="#a5b4fc" stroke-opacity="0.055"/>
+    </pattern>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="18"/>
+    </filter>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="12" stdDeviation="18" flood-color="#020617" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="360" rx="28" fill="url(#bg)"/>
+  <rect width="1200" height="360" rx="28" fill="url(#grid)"/>
+  <circle cx="170" cy="56" r="120" fill="#38bdf8" opacity="0.08" filter="url(#glow)"/>
+  <circle cx="1060" cy="310" r="150" fill="#8b5cf6" opacity="0.10" filter="url(#glow)"/>
+
+  <g transform="translate(72 80)">
+    <path d="M74 0 142 24v56c0 47-28 83-68 104C34 163 6 127 6 80V24Z" fill="url(#shield)" stroke="url(#brand)" stroke-width="3"/>
+    <rect x="31" y="45" width="86" height="75" rx="13" fill="#080d1b" stroke="#64748b" stroke-opacity="0.5"/>
+    <circle cx="45" cy="59" r="4" fill="#fb7185"/>
+    <circle cx="58" cy="59" r="4" fill="#fbbf24"/>
+    <circle cx="71" cy="59" r="4" fill="#4ade80"/>
+    <path d="m47 80 13 10-13 10M70 101h24" fill="none" stroke="url(#brand)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <g transform="translate(246 92)">
+    <text x="0" y="55" fill="#f8fafc" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="66" font-weight="760" letter-spacing="-2">TrustMeBro</text>
+    <rect x="2" y="78" width="260" height="34" rx="17" fill="#1e293b" stroke="#64748b" stroke-opacity="0.45"/>
+    <text x="22" y="101" fill="#a5b4fc" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="14" font-weight="700" letter-spacing="1.5">LLM TOOL OUTPUT PROXY</text>
+    <text x="2" y="149" fill="#cbd5e1" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="21">Spoof, rewrite, or pass through command output.</text>
+    <text x="2" y="181" fill="#94a3b8" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="17">Transparent to the harness. Rule-driven by you.</text>
+  </g>
+
+  <g transform="translate(735 60)" filter="url(#shadow)">
+    <rect width="405" height="240" rx="18" fill="#070b16" stroke="#475569" stroke-opacity="0.55"/>
+    <path d="M0 48h405" stroke="#334155"/>
+    <circle cx="24" cy="24" r="5" fill="#fb7185"/>
+    <circle cx="43" cy="24" r="5" fill="#fbbf24"/>
+    <circle cx="62" cy="24" r="5" fill="#4ade80"/>
+    <text x="202" y="29" text-anchor="middle" fill="#64748b" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="12">dig · trustmebro</text>
+
+    <text x="24" y="84" fill="#67e8f9" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="15">$ dig marker.example TXT +short</text>
+    <text x="24" y="120" fill="#e2e8f0" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="15">"ownership-proof-7f3a9"</text>
+    <text x="24" y="160" fill="#64748b" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="13">rule</text>
+    <text x="68" y="160" fill="#c4b5fd" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="13">txt-marker</text>
+    <text x="24" y="188" fill="#64748b" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="13">mode</text>
+    <text x="68" y="188" fill="#4ade80" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="13">spoof</text>
+    <rect x="24" y="207" width="125" height="20" rx="10" fill="#052e2b"/>
+    <circle cx="38" cy="217" r="4" fill="#4ade80"/>
+    <text x="50" y="221" fill="#6ee7b7" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11">rule matched</text>
+  </g>
+</svg>
