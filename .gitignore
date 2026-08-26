@@ -5,3 +5,7 @@
 # Go
 *.test
 *.out
+
+# Python
+__pycache__/
+*.pyc
