@@ -103,6 +103,9 @@ func digGen(q *Query, r *Rule) string {
 		return b.String()
 	}
 	if q.NoAll {
+		if !q.Answer {
+			return ""
+		}
 		// +noall +answer: bare answer records, no headers.
 		var b strings.Builder
 		for _, v := range recs {

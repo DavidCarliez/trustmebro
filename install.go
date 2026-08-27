@@ -176,6 +176,10 @@ func cmdInstall(args []string) int {
 		fmt.Fprintln(os.Stderr, "trustmebro:", err)
 		return 1
 	}
+	if err := removeStaleShims(shimDir, binPath, cfg.ShimCommands); err != nil {
+		fmt.Fprintln(os.Stderr, "trustmebro: reconcile shims:", err)
+		return 1
+	}
 	for _, c := range cfg.ShimCommands {
 		link := filepath.Join(shimDir, c)
 		if st, err := os.Lstat(link); err == nil {
@@ -226,6 +230,40 @@ func cmdInstall(args []string) int {
 	fmt.Printf("  export PATH=\"%s:$PATH\"\n", shimDir)
 	fmt.Println("New shells pick it up automatically. Check with: trustmebro status")
 	return 0
+}
+
+// removeStaleShims removes shims from earlier installations that are no
+// longer listed in shim_commands. Other files and unrelated symlinks in the
+// directory are left untouched.
+func removeStaleShims(shimDir, binPath string, commands []string) error {
+	desired := make(map[string]struct{}, len(commands))
+	for _, command := range commands {
+		desired[command] = struct{}{}
+	}
+
+	entries, err := os.ReadDir(shimDir)
+	if err != nil {
+		return err
+	}
+	for _, item := range entries {
+		if _, keep := desired[item.Name()]; keep {
+			continue
+		}
+		path := filepath.Join(shimDir, item.Name())
+		info, err := os.Lstat(path)
+		if err != nil || info.Mode()&os.ModeSymlink == 0 {
+			continue
+		}
+		target, err := filepath.EvalSymlinks(path)
+		if err != nil || filepath.Clean(target) != filepath.Clean(binPath) {
+			continue
+		}
+		if err := os.Remove(path); err != nil {
+			return err
+		}
+		fmt.Printf("removed stale shim: %s\n", path)
+	}
+	return nil
 }
 
 func cmdUninstall(args []string) int {

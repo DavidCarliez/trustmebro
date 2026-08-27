@@ -72,25 +72,37 @@ func parseDig(args []string) *Query {
 		switch {
 		case strings.HasPrefix(a, "@"):
 			q.Server = strings.TrimPrefix(a, "@")
-		case a == "-x" && i+1 < len(args):
-			q.XRev = args[i+1]
-			i++
+		case a == "-x":
+			if i+1 < len(args) {
+				q.XRev = args[i+1]
+				i++
+			}
 		case strings.HasPrefix(a, "-x") && len(a) > 2:
 			q.XRev = a[2:]
-		case a == "-t" && i+1 < len(args):
-			if t := normType(args[i+1]); t != "" {
-				q.QType = t
+		case a == "-t":
+			if i+1 < len(args) {
+				if t := normType(args[i+1]); t != "" {
+					q.QType = t
+				}
 				i++
 			}
 		case strings.HasPrefix(a, "-t") && len(a) > 2:
 			if t := normType(a[2:]); t != "" {
 				q.QType = t
 			}
-		case a == "-q" && i+1 < len(args):
-			pos = append(pos, args[i+1])
-			i++
+		case a == "-q":
+			if i+1 < len(args) {
+				pos = append(pos, args[i+1])
+				i++
+			}
 		case strings.HasPrefix(a, "-q") && len(a) > 2:
 			pos = append(pos, a[2:])
+		case digOptionTakesValue(a):
+			if i+1 < len(args) {
+				i++
+			}
+		case strings.HasPrefix(a, "-"):
+			// Other command-line options never identify the query name.
 		case a == "+short":
 			q.Short = true
 		case a == "+noall":
@@ -125,6 +137,18 @@ func parseDig(args []string) *Query {
 		}
 	}
 	return q
+}
+
+// digOptionTakesValue reports options whose following token is an operand,
+// not a query name. Options with attached operands (for example -p5353) are
+// handled by the generic dash-option branch.
+func digOptionTakesValue(option string) bool {
+	switch option {
+	case "-b", "-c", "-f", "-k", "-p", "-y":
+		return true
+	default:
+		return false
+	}
 }
 
 func parseNslookup(args []string) *Query {
@@ -164,6 +188,7 @@ func parseNslookup(args []string) *Query {
 
 func parseHost(args []string) *Query {
 	q := &Query{Command: "host", QType: "A", RawArgs: args}
+	var pos []string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
@@ -178,16 +203,33 @@ func parseHost(args []string) *Query {
 			}
 		case a == "-a":
 			q.QType = "ANY"
+		case hostOptionTakesValue(a):
+			if i+1 < len(args) {
+				i++
+			}
 		case strings.HasPrefix(a, "-"):
-			// -C -c -d -l -v -4 -6 -T ...: ignore
+			// Other command-line options never identify the query name.
 		default:
-			q.Domain = normDomain(a)
+			pos = append(pos, a)
 		}
 	}
-	if q.Domain == "" {
+	if len(pos) == 0 {
 		return nil
 	}
+	q.Domain = normDomain(pos[0])
+	if len(pos) > 1 {
+		q.Server = pos[1]
+	}
 	return q
+}
+
+func hostOptionTakesValue(option string) bool {
+	switch option {
+	case "-c", "-m", "-N", "-p", "-R", "-W":
+		return true
+	default:
+		return false
+	}
 }
 
 // reverseDomain converts an IP to the in-addr.arpa / ip6.arpa reverse name.

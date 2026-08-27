@@ -242,6 +242,7 @@ trustmebro check               Validate configuration
 - `which dig` and `command -v dig` reveal the shim path.
 - In-process DNS clients such as Python's `socket` or `dns.resolver` do not invoke command shims.
 - Synthetic IDs, timing, and instant responses are intended for agent testing, not forensic simulation.
+- Rewrite mode buffers up to 16 MiB each of stdout and stderr. Larger output is rejected instead of being partially rewritten.
 - The bundled installer targets Unix shells. Windows support is experimental.
 
 ## Development

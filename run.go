@@ -7,10 +7,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 )
 
-const exitConfigError = 78
+const (
+	exitConfigError       = 78
+	maxRewriteStreamBytes = 16 * 1024 * 1024
+)
 
 // shimMain is the entry point when trustmebro is invoked under a shim name.
 // It resolves the rule, applies it, and exits with the appropriate code.
@@ -82,7 +86,7 @@ func execReal(name string, args []string, cfg *Config, rule string) int {
 	}
 	appendLog(logPath(cfg), entry{PID: os.Getpid(), Cmd: name, Argv: args, Rule: rule, Mode: "passthrough", Real: real})
 
-	env := append(os.Environ(), "TRUSTMEBRO_DISABLE=1")
+	env := envWithOverride(os.Environ(), "TRUSTMEBRO_DISABLE", "1")
 	if err := syscall.Exec(real, append([]string{real}, args...), env); err == nil {
 		return 0 // unreachable on success
 	}
@@ -107,20 +111,74 @@ func rewriteRun(name string, args []string, cfg *Config, rule *Rule) int {
 		return 127
 	}
 	cmd := exec.Command(real, args...)
-	cmd.Env = append(os.Environ(), "TRUSTMEBRO_DISABLE=1")
+	cmd.Env = envWithOverride(os.Environ(), "TRUSTMEBRO_DISABLE", "1")
 	cmd.Stdin = os.Stdin
-	var out, errb bytes.Buffer
+	out := newLimitedBuffer(maxRewriteStreamBytes)
+	errb := newLimitedBuffer(maxRewriteStreamBytes)
 	cmd.Stdout = &out
 	cmd.Stderr = &errb
 	err := cmd.Run()
+	q := ParseQuery(name, args)
+
+	if out.exceeded || errb.exceeded {
+		if !errb.exceeded {
+			_, _ = os.Stderr.Write(errb.Bytes())
+		}
+		fmt.Fprintf(os.Stderr, "trustmebro: rewrite output exceeded the %d MiB per-stream limit; output not rewritten\n", maxRewriteStreamBytes/(1024*1024))
+		code := 1
+		appendLog(logPath(cfg), entry{PID: os.Getpid(), Cmd: name, Argv: args, Domain: queryDomain(q), QType: queryType(q), Rule: rule.Name, Mode: "rewrite", Real: real, Exit: &code})
+		return code
+	}
 
 	transformed := applyRewrites(rule.Rewrite, out.String())
 	os.Stdout.WriteString(transformed)
 	os.Stderr.WriteString(errb.String())
 
 	code := exitCode(err)
-	appendLog(logPath(cfg), entry{PID: os.Getpid(), Cmd: name, Argv: args, Domain: queryDomain(ParseQuery(name, args)), QType: queryType(ParseQuery(name, args)), Rule: rule.Name, Mode: "rewrite", Real: real, Exit: &code})
+	appendLog(logPath(cfg), entry{PID: os.Getpid(), Cmd: name, Argv: args, Domain: queryDomain(q), QType: queryType(q), Rule: rule.Name, Mode: "rewrite", Real: real, Exit: &code})
 	return code
+}
+
+// limitedBuffer retains at most limit bytes while continuing to drain the
+// child process. This prevents rewrite mode from growing memory without bound.
+type limitedBuffer struct {
+	buffer   bytes.Buffer
+	limit    int
+	exceeded bool
+}
+
+func newLimitedBuffer(limit int) limitedBuffer {
+	return limitedBuffer{limit: limit}
+}
+
+func (b *limitedBuffer) Write(p []byte) (int, error) {
+	remaining := b.limit - b.buffer.Len()
+	if remaining > 0 {
+		keep := len(p)
+		if keep > remaining {
+			keep = remaining
+		}
+		_, _ = b.buffer.Write(p[:keep])
+	}
+	if len(p) > remaining {
+		b.exceeded = true
+	}
+	return len(p), nil
+}
+
+func (b *limitedBuffer) Bytes() []byte { return b.buffer.Bytes() }
+
+func (b *limitedBuffer) String() string { return b.buffer.String() }
+
+func envWithOverride(env []string, key, value string) []string {
+	prefix := key + "="
+	out := make([]string, 0, len(env)+1)
+	for _, item := range env {
+		if !strings.HasPrefix(item, prefix) {
+			out = append(out, item)
+		}
+	}
+	return append(out, prefix+value)
 }
 
 func exitCode(err error) int {

@@ -27,6 +27,10 @@ func TestParseDig(t *testing.T) {
 		{[]string{"-q", "EXAMPLE.COM.", "TXT"}, "example.com", "TXT", false, false, ""},
 		{[]string{"EXAMPLE.COM"}, "example.com", "A", false, false, ""},
 		{[]string{"example.com", "AAAA", "+short"}, "example.com", "AAAA", true, false, ""},
+		{[]string{"-4", "example.com"}, "example.com", "A", false, false, ""},
+		{[]string{"-6", "-p", "5353", "example.com"}, "example.com", "A", false, false, ""},
+		{[]string{"-b", "192.0.2.2", "-c", "IN", "example.com", "TXT"}, "example.com", "TXT", false, false, ""},
+		{[]string{"-p5353", "example.com"}, "example.com", "A", false, false, ""},
 	}
 	for _, tt := range tests {
 		q := parseDig(tt.args)
@@ -71,6 +75,14 @@ func TestParseHost(t *testing.T) {
 	}
 	q = parseHost([]string{"example.com"})
 	if q == nil || q.QType != "A" {
+		t.Fatalf("got %+v", q)
+	}
+	q = parseHost([]string{"example.com", "8.8.8.8"})
+	if q == nil || q.Domain != "example.com" || q.Server != "8.8.8.8" {
+		t.Fatalf("got %+v", q)
+	}
+	q = parseHost([]string{"-c", "IN", "-p", "5353", "example.com", "8.8.8.8"})
+	if q == nil || q.Domain != "example.com" || q.Server != "8.8.8.8" {
 		t.Fatalf("got %+v", q)
 	}
 	if parseHost(nil) != nil {
@@ -169,6 +181,14 @@ func TestDigGenNoAllAnswer(t *testing.T) {
 	}
 }
 
+func TestDigGenNoAllWithoutAnswer(t *testing.T) {
+	r := &Rule{Records: map[string][]string{"A": {"203.0.113.10"}}}
+	q := &Query{Command: "dig", Domain: "marker.test", QType: "A", NoAll: true}
+	if out := digGen(q, r); out != "" {
+		t.Errorf("noall output = %q, want empty", out)
+	}
+}
+
 func TestDigGenReverse(t *testing.T) {
 	r := &Rule{Records: map[string][]string{"PTR": {"host.example.net."}}}
 	q := &Query{Command: "dig", Domain: "4.3.2.1.in-addr.arpa", QType: "PTR", XRev: "1.2.3.4"}
@@ -212,6 +232,40 @@ func TestApplyRewrites(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("rewrite output missing %q: %q", want, out)
 		}
+	}
+}
+
+func TestLimitedBuffer(t *testing.T) {
+	b := newLimitedBuffer(5)
+	for _, chunk := range []string{"abc", "def", "ghi"} {
+		if n, err := b.Write([]byte(chunk)); err != nil || n != len(chunk) {
+			t.Fatalf("Write(%q) = (%d, %v)", chunk, n, err)
+		}
+	}
+	if got := b.String(); got != "abcde" {
+		t.Fatalf("buffer = %q, want %q", got, "abcde")
+	}
+	if !b.exceeded {
+		t.Fatal("buffer should report that its limit was exceeded")
+	}
+}
+
+func TestEnvWithOverride(t *testing.T) {
+	env := envWithOverride([]string{
+		"PATH=/bin",
+		"TRUSTMEBRO_DISABLE=0",
+		"TRUSTMEBRO_DISABLE=old",
+		"OTHER=value",
+	}, "TRUSTMEBRO_DISABLE", "1")
+
+	var values []string
+	for _, item := range env {
+		if strings.HasPrefix(item, "TRUSTMEBRO_DISABLE=") {
+			values = append(values, item)
+		}
+	}
+	if len(values) != 1 || values[0] != "TRUSTMEBRO_DISABLE=1" {
+		t.Fatalf("override entries = %v, full environment = %v", values, env)
 	}
 }
 

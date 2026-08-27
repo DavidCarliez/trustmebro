@@ -40,6 +40,7 @@ func newIntegrationHarness(t *testing.T) *integrationHarness {
 
 	for _, name := range []string{"dig", "host", "nslookup"} {
 		script := "#!/bin/sh\n" +
+			"if [ \"$1\" = overflow.test ]; then dd if=/dev/zero bs=1048576 count=17 2>/dev/null; exit 0; fi\n" +
 			"printf 'REAL " + name + ":%s\\n' \"$*\"\n" +
 			"printf 'ERR " + name + ":%s\\n' \"$*\" >&2\n" +
 			"if [ \"$1\" = rewrite.test ]; then exit 9; fi\n"
@@ -120,6 +121,13 @@ rules:
     rewrite:
       - find: REAL
         replace: PATCHED
+  - name: rewrite overflow
+    command: dig
+    action: rewrite
+    match: {domain: overflow.test}
+    rewrite:
+      - find: REAL
+        replace: PATCHED
 `
 
 	t.Run("spoof", func(t *testing.T) {
@@ -143,6 +151,14 @@ rules:
 		stdout, stderr, code := runIntegrationCommand(t, filepath.Join(h.shimDir, "dig"), []string{"rewrite.test", "A"}, h.env(nil))
 		if code != 9 || !strings.Contains(stdout, "PATCHED dig:rewrite.test A") || !strings.Contains(stderr, "ERR dig:rewrite.test A") {
 			t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout, stderr)
+		}
+	})
+
+	t.Run("rewrite rejects oversized output", func(t *testing.T) {
+		h.writeConfig(t, validConfig)
+		stdout, stderr, code := runIntegrationCommand(t, filepath.Join(h.shimDir, "dig"), []string{"overflow.test", "A"}, h.env(nil))
+		if code != 1 || stdout != "" || !strings.Contains(stderr, "exceeded the 16 MiB per-stream limit") {
+			t.Fatalf("code=%d stdout_bytes=%d stderr=%q", code, len(stdout), stderr)
 		}
 	})
 
@@ -200,6 +216,44 @@ func TestInstallRejectsShimPathTraversal(t *testing.T) {
 	} {
 		if _, err := os.Lstat(path); !os.IsNotExist(err) {
 			t.Errorf("unexpected install artifact %s (err=%v)", path, err)
+		}
+	}
+}
+
+func TestInstallRemovesStaleManagedShims(t *testing.T) {
+	h := newIntegrationHarness(t)
+	installHome := filepath.Join(t.TempDir(), "install-home")
+	if err := os.MkdirAll(installHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	env := h.env(map[string]string{"HOME": installHome})
+
+	h.writeConfig(t, "shim_commands: [dig, host]\nlog_file: \"\"\n")
+	_, stderr, code := runIntegrationCommand(t, h.binary, []string{"install", "--no-rc"}, env)
+	if code != 0 {
+		t.Fatalf("first install: code=%d stderr=%q", code, stderr)
+	}
+
+	installedShimDir := filepath.Join(installHome, shimRel)
+	unrelated := filepath.Join(installedShimDir, "unrelated")
+	if err := os.Symlink("/bin/true", unrelated); err != nil {
+		t.Fatal(err)
+	}
+
+	h.writeConfig(t, "shim_commands: [dig]\nlog_file: \"\"\n")
+	stdout, stderr, code := runIntegrationCommand(t, h.binary, []string{"install", "--no-rc"}, env)
+	if code != 0 {
+		t.Fatalf("second install: code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "removed stale shim:") {
+		t.Fatalf("second install did not report stale shim removal: %q", stdout)
+	}
+	if _, err := os.Lstat(filepath.Join(installedShimDir, "host")); !os.IsNotExist(err) {
+		t.Fatalf("stale host shim still exists (err=%v)", err)
+	}
+	for _, path := range []string{filepath.Join(installedShimDir, "dig"), unrelated} {
+		if _, err := os.Lstat(path); err != nil {
+			t.Errorf("expected %s to remain: %v", path, err)
 		}
 	}
 }
