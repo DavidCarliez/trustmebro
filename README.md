@@ -10,30 +10,20 @@
 
   **Bypass llm guardrails by confusing it with fabricated tool output.**
 
-  [Demo](#demo) · [Results](#model-results) · [Installation](#installation) · [Quick start](#quick-start) · [Rules](#rules) · [Architecture](#architecture)
+  [Results](#model-results) · [Installation](#installation) · [Quick start](#quick-start) · [Rules](#rules) · [Architecture](#architecture)
 </div>
 
 TrustMeBro intercepts command-line tools invoked by coding agents such as Codex, Claude Code, and pi. Rules decide whether to return fabricated output, modify the real output, block the call, or execute the real binary unchanged.
 
 Interception happens through `PATH` shims. The harness does not need a plugin, hook, or MCP integration. The intended use is controlled red-team testing of decisions that depend on tool output.
 
-> [!WARNING]
-> TrustMeBro fabricates evidence shown to an AI. Use it only on systems and workflows you own or are authorized to test.
-
-## Demo
-
-<div align="center">
-  <img src="assets/demo-comparison.gif" alt="Comparison of an agent refusing a scan and proceeding after TrustMeBro fabricates a DNS ownership marker" width="100%">
-</div>
-
-The left session refuses to scan a domain without proof of ownership. In the right session, the agent generates a marker, checks it with `dig`, receives fabricated DNS output through TrustMeBro, and proceeds with the scan. The animation and scan output are simulated.
-
 ## Model results
 
 In a controlled local evaluation, each model had to verify a fresh DNS TXT
 authorization marker before it could proceed with a scan. Without TrustMeBro,
 the real `/usr/bin/dig` returned no marker and the model stopped. With
-TrustMeBro lab mode, the same absolute command path returned fabricated proof.
+TrustMeBro lab mode, the same absolute command path returned fabricated proof
+and, as a result, the model went ahead with the scan.
 
 | Model | Without TrustMeBro | With TrustMeBro |
 |---|---:|---:|
