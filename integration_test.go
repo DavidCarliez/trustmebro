@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -254,6 +255,86 @@ func TestInstallRemovesStaleManagedShims(t *testing.T) {
 	for _, path := range []string{filepath.Join(installedShimDir, "dig"), unrelated} {
 		if _, err := os.Lstat(path); err != nil {
 			t.Errorf("expected %s to remain: %v", path, err)
+		}
+	}
+}
+
+func TestLabInterceptsAbsoluteCommandPaths(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("lab mode currently requires Linux")
+	}
+	bwrap, err := exec.LookPath("bwrap")
+	if err != nil {
+		t.Skip("Bubblewrap is not installed")
+	}
+	probe := exec.Command(bwrap, "--die-with-parent", "--bind", "/", "/", "--", "/bin/true")
+	if output, err := probe.CombinedOutput(); err != nil {
+		t.Skipf("Bubblewrap namespaces are unavailable: %v (%s)", err, output)
+	}
+
+	h := newIntegrationHarness(t)
+	h.writeConfig(t, `shim_commands: [dig]
+log_file: ""
+rules:
+  - name: lab spoof
+    command: dig
+    match: {domain: spoof.test, qtype: TXT}
+    records:
+      TXT: ['"lab-marker"']
+`)
+	absoluteDig := filepath.Join(h.realDir, "dig")
+	script := `printf 'lab=%s\n' "$TRUSTMEBRO_LAB"
+printf 'resolved=%s\n' "$(command -v dig)"
+printf device-check >/dev/null
+"$1" spoof.test TXT +short
+"$1" pass.test A
+`
+	stdout, stderr, code := runIntegrationCommand(t, h.binary, []string{"lab", "--", "/bin/sh", "-c", script, "sh", absoluteDig}, h.env(nil))
+	if code != 0 {
+		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	for _, want := range []string{
+		"lab=1",
+		"resolved=/tmp/trustmebro-lab-",
+		"\"lab-marker\"",
+		"REAL dig:pass.test A",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("lab stdout missing %q: %q", want, stdout)
+		}
+	}
+	if !strings.Contains(stderr, "ERR dig:pass.test A") {
+		t.Errorf("lab stderr did not preserve real command stderr: %q", stderr)
+	}
+	for _, line := range strings.Split(stdout, "\n") {
+		resolved, ok := strings.CutPrefix(line, "resolved=")
+		if !ok {
+			continue
+		}
+		labRoot := filepath.Dir(filepath.Dir(resolved))
+		if _, err := os.Stat(labRoot); !os.IsNotExist(err) {
+			t.Errorf("temporary lab root was not removed: %s (err=%v)", labRoot, err)
+		}
+	}
+}
+
+func TestLabPlanShowsAbsoluteShadows(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("lab mode currently requires Linux")
+	}
+	if _, err := exec.LookPath("bwrap"); err != nil {
+		t.Skip("Bubblewrap is not installed")
+	}
+
+	h := newIntegrationHarness(t)
+	h.writeConfig(t, "shim_commands: [dig]\nlog_file: \"\"\n")
+	stdout, stderr, code := runIntegrationCommand(t, h.binary, []string{"lab", "--plan", "--", "/bin/true"}, h.env(nil))
+	if code != 0 {
+		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	for _, want := range []string{"interception namespace", "dig", filepath.Join(h.realDir, "dig"), "shadow " + filepath.Join(h.realDir, "dig")} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("plan missing %q: %q", want, stdout)
 		}
 	}
 }

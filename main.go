@@ -39,6 +39,8 @@ func cliMain(args []string) int {
 		return cmdListRules()
 	case "check":
 		return cmdCheck()
+	case "lab":
+		return cmdLab(args[1:])
 	case "help", "-h", "--help":
 		usage()
 		return 0
@@ -62,6 +64,7 @@ Usage:
   trustmebro status              show install state and real binary mapping
   trustmebro list-rules          dump compiled rules
   trustmebro check               validate config
+  trustmebro lab [--] [command]  run a command in an interception namespace
 
 Config: %s
 `, version, configPath())

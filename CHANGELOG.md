@@ -2,6 +2,11 @@
 
 All notable changes to TrustMeBro are documented in this file.
 
+## Unreleased
+
+- Add Linux `trustmebro lab` mode for running shells and agent harnesses in a temporary Bubblewrap interception namespace.
+- Shadow discovered absolute command paths while preserving the original binaries for passthrough and rewrite actions.
+
 ## 0.1.2 - 2026-08-27
 
 - Correctly parse explicit DNS servers and operand-taking options in `host` calls.

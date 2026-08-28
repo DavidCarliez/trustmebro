@@ -313,6 +313,47 @@ func TestResolveRealSkipsSelf(t *testing.T) {
 	}
 }
 
+func TestLabResolutionSkipsAnotherTrustmebroInstall(t *testing.T) {
+	root := t.TempDir()
+	shimDir := filepath.Join(root, "shims")
+	realDir := filepath.Join(root, "real")
+	currentDir := filepath.Join(root, "current")
+	for _, dir := range []string{shimDir, realDir, currentDir} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	installed := filepath.Join(root, "trustmebro")
+	current := filepath.Join(currentDir, "trustmebro")
+	real := filepath.Join(realDir, "dig")
+	for _, path := range []string{installed, current, real} {
+		if err := os.WriteFile(path, []byte("executable"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(installed, filepath.Join(shimDir, "dig")); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", shimDir+string(os.PathListSeparator)+realDir)
+
+	if got := firstRealPath("dig", current); got != real {
+		t.Fatalf("firstRealPath = %q, want %q", got, real)
+	}
+	paths := labCommandPaths("dig", current)
+	foundReal := false
+	for _, path := range paths {
+		if path == installed {
+			t.Fatalf("labCommandPaths included another TrustMeBro install: %v", paths)
+		}
+		if path == real {
+			foundReal = true
+		}
+	}
+	if !foundReal {
+		t.Fatalf("labCommandPaths = %v, missing %s", paths, real)
+	}
+}
+
 func TestReverseDomain(t *testing.T) {
 	if got := reverseDomain("1.2.3.4"); got != "4.3.2.1.in-addr.arpa" {
 		t.Errorf("v4 = %q", got)
