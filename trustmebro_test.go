@@ -2,7 +2,9 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -266,6 +268,94 @@ func TestEnvWithOverride(t *testing.T) {
 	}
 	if len(values) != 1 || values[0] != "TRUSTMEBRO_DISABLE=1" {
 		t.Fatalf("override entries = %v, full environment = %v", values, env)
+	}
+}
+
+func TestExitCodeForSignal(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX signals are unavailable on Windows")
+	}
+	err := exec.Command("/bin/sh", "-c", "kill -TERM $$").Run()
+	if got := exitCode(err); got != 143 {
+		t.Fatalf("exitCode(%v) = %d, want 143", err, got)
+	}
+}
+
+func TestCopyFileIsAtomicAndExecutable(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "source")
+	dst := filepath.Join(dir, "destination")
+	if err := os.WriteFile(src, []byte("new binary"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := copyFile(src, dst); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(dst)
+	if err != nil || string(data) != "new binary" {
+		t.Fatalf("destination: data=%q err=%v", data, err)
+	}
+	info, err := os.Stat(dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o755 {
+		t.Fatalf("destination mode = %o, want 755", got)
+	}
+	temps, err := filepath.Glob(filepath.Join(dir, ".destination.tmp-*"))
+	if err != nil || len(temps) != 0 {
+		t.Fatalf("temporary files left behind: %v (err=%v)", temps, err)
+	}
+}
+
+func TestEditRCPreservesModeAndSymlink(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "shellrc")
+	link := filepath.Join(dir, "shellrc-link")
+	if err := os.WriteFile(target, []byte("export ORIGINAL=1\n"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	if !editRC(link, false) {
+		t.Fatal("editRC reported no change")
+	}
+	info, err := os.Lstat(link)
+	if err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("RC symlink was replaced: info=%v err=%v", info, err)
+	}
+	targetInfo, err := os.Stat(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := targetInfo.Mode().Perm(); got != 0o640 {
+		t.Fatalf("RC mode = %o, want 640", got)
+	}
+	data, err := os.ReadFile(target)
+	if err != nil || !strings.Contains(string(data), rcOpen) {
+		t.Fatalf("RC was not updated: data=%q err=%v", data, err)
+	}
+}
+
+func TestRCMarkerRequiresOrderedPair(t *testing.T) {
+	malformed := rcClose + "\nkeep this\n" + rcOpen
+	if hasRCMarker(malformed) {
+		t.Fatal("reversed markers should not form a managed block")
+	}
+	if got := replaceRCMarker(malformed, "replacement"); got != malformed {
+		t.Fatalf("malformed RC changed to %q", got)
+	}
+	path := filepath.Join(t.TempDir(), "shellrc")
+	if err := os.WriteFile(path, []byte(malformed), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if editRC(path, false) {
+		t.Fatal("editRC should reject malformed markers")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || string(data) != malformed {
+		t.Fatalf("malformed RC changed: data=%q err=%v", data, err)
 	}
 }
 

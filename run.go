@@ -187,6 +187,9 @@ func exitCode(err error) int {
 	}
 	var ee *exec.ExitError
 	if errors.As(err, &ee) {
+		if status, ok := ee.Sys().(syscall.WaitStatus); ok && status.Signaled() {
+			return 128 + int(status.Signal())
+		}
 		return ee.ExitCode()
 	}
 	return 1

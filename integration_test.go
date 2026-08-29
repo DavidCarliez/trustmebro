@@ -221,6 +221,32 @@ func TestInstallRejectsShimPathTraversal(t *testing.T) {
 	}
 }
 
+func TestInstallPreflightsShimCollisions(t *testing.T) {
+	h := newIntegrationHarness(t)
+	h.writeConfig(t, "shim_commands: [dig]\nlog_file: \"\"\n")
+	installHome := filepath.Join(t.TempDir(), "install-home")
+	shimDir := filepath.Join(installHome, shimRel)
+	if err := os.MkdirAll(shimDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	collision := filepath.Join(shimDir, "dig")
+	if err := os.WriteFile(collision, []byte("leave me alone"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, stderr, code := runIntegrationCommand(t, h.binary, []string{"install", "--no-rc"}, h.env(map[string]string{"HOME": installHome}))
+	if code == 0 || !strings.Contains(stderr, "exists and is not a symlink") {
+		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	if _, err := os.Lstat(filepath.Join(installHome, binRel, "trustmebro")); !os.IsNotExist(err) {
+		t.Fatalf("binary was copied before shim preflight completed (err=%v)", err)
+	}
+	data, err := os.ReadFile(collision)
+	if err != nil || string(data) != "leave me alone" {
+		t.Fatalf("collision changed: data=%q err=%v", data, err)
+	}
+}
+
 func TestInstallRemovesStaleManagedShims(t *testing.T) {
 	h := newIntegrationHarness(t)
 	installHome := filepath.Join(t.TempDir(), "install-home")

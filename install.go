@@ -155,6 +155,10 @@ func cmdInstall(args []string) int {
 		fmt.Fprintln(os.Stderr, "trustmebro: cannot locate own binary")
 		return 1
 	}
+	if err := preflightShimTargets(shimDir, cfg.ShimCommands); err != nil {
+		fmt.Fprintln(os.Stderr, "trustmebro:", err)
+		return 1
+	}
 
 	// 1. Binary.
 	if err := os.MkdirAll(filepath.Dir(binPath), 0o755); err != nil {
@@ -182,14 +186,7 @@ func cmdInstall(args []string) int {
 	}
 	for _, c := range cfg.ShimCommands {
 		link := filepath.Join(shimDir, c)
-		if st, err := os.Lstat(link); err == nil {
-			if st.Mode()&os.ModeSymlink == 0 {
-				fmt.Fprintf(os.Stderr, "trustmebro: %s exists and is not a symlink; remove it first\n", link)
-				return 1
-			}
-			os.Remove(link)
-		}
-		if err := os.Symlink(binPath, link); err != nil {
+		if err := replaceSymlink(binPath, link); err != nil {
 			fmt.Fprintln(os.Stderr, "trustmebro:", err)
 			return 1
 		}
@@ -230,6 +227,45 @@ func cmdInstall(args []string) int {
 	fmt.Printf("  export PATH=\"%s:$PATH\"\n", shimDir)
 	fmt.Println("New shells pick it up automatically. Check with: trustmebro status")
 	return 0
+}
+
+// preflightShimTargets rejects collisions before installation changes any
+// files. Existing symlinks are managed by TrustMeBro and can be replaced.
+func preflightShimTargets(shimDir string, commands []string) error {
+	for _, command := range commands {
+		path := filepath.Join(shimDir, command)
+		info, err := os.Lstat(path)
+		switch {
+		case err == nil && info.Mode()&os.ModeSymlink == 0:
+			return fmt.Errorf("%s exists and is not a symlink; remove it first", path)
+		case err == nil, os.IsNotExist(err):
+			continue
+		default:
+			return fmt.Errorf("inspect shim %s: %w", path, err)
+		}
+	}
+	return nil
+}
+
+// replaceSymlink builds the replacement beside its destination and renames it
+// into place, so an interrupted reinstall never leaves a missing shim.
+func replaceSymlink(target, link string) error {
+	tmp, err := os.CreateTemp(filepath.Dir(link), "."+filepath.Base(link)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Remove(tmpPath); err != nil {
+		return err
+	}
+	if err := os.Symlink(target, tmpPath); err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, link)
 }
 
 // removeStaleShims removes shims from earlier installations that are no
@@ -403,18 +439,34 @@ func copyFile(src, dst string) error {
 		return err
 	}
 	defer in.Close()
-	tmp := dst + ".tmp"
-	out, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
+	return atomicWrite(dst, 0o755, func(out io.Writer) error {
+		_, err := io.Copy(out, in)
+		return err
+	})
+}
+
+// atomicWrite writes a uniquely named temporary file beside dst and renames
+// it only after the complete contents have reached the filesystem.
+func atomicWrite(dst string, mode os.FileMode, write func(io.Writer) error) error {
+	out, err := os.CreateTemp(filepath.Dir(dst), "."+filepath.Base(dst)+".tmp-*")
 	if err != nil {
 		return err
 	}
-	if _, err := io.Copy(out, in); err != nil {
+	tmp := out.Name()
+	defer os.Remove(tmp)
+	if err := write(out); err != nil {
 		out.Close()
-		os.Remove(tmp)
+		return err
+	}
+	if err := out.Chmod(mode); err != nil {
+		out.Close()
+		return err
+	}
+	if err := out.Sync(); err != nil {
+		out.Close()
 		return err
 	}
 	if err := out.Close(); err != nil {
-		os.Remove(tmp)
 		return err
 	}
 	return os.Rename(tmp, dst)
@@ -440,24 +492,59 @@ func editRC(path string, fish bool) bool {
 	block := rcBlock(fish)
 	if hasRCMarker(s) {
 		s = replaceRCMarker(s, block)
+	} else if strings.Contains(s, rcOpen) || strings.Contains(s, rcClose) {
+		return false
 	} else {
 		s = strings.TrimRight(s, "\n") + block
 	}
-	return os.WriteFile(path, []byte(s), 0o644) == nil
+	return writeRC(path, []byte(s)) == nil
 }
 
 func hasRCMarker(s string) bool {
-	return strings.Contains(s, rcOpen) && strings.Contains(s, rcClose)
+	_, _, ok := rcMarkerRange(s)
+	return ok
 }
 
 func replaceRCMarker(s, block string) string {
-	i := strings.Index(s, rcOpen)
-	j := strings.Index(s, rcClose)
-	if i < 0 || j < 0 {
+	i, j, ok := rcMarkerRange(s)
+	if !ok {
 		return s
 	}
-	j += len(rcClose)
 	return s[:i] + block + s[j:]
+}
+
+func rcMarkerRange(s string) (start, end int, ok bool) {
+	if strings.Count(s, rcOpen) != 1 || strings.Count(s, rcClose) != 1 {
+		return 0, 0, false
+	}
+	start = strings.Index(s, rcOpen)
+	if start < 0 {
+		return 0, 0, false
+	}
+	rest := s[start+len(rcOpen):]
+	closeOffset := strings.Index(rest, rcClose)
+	if closeOffset < 0 {
+		return 0, 0, false
+	}
+	end = start + len(rcOpen) + closeOffset + len(rcClose)
+	return start, end, true
+}
+
+// writeRC atomically updates the underlying file while preserving both its
+// permissions and a symlink used to reach it.
+func writeRC(path string, data []byte) error {
+	target, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return err
+	}
+	info, err := os.Stat(target)
+	if err != nil {
+		return err
+	}
+	return atomicWrite(target, info.Mode().Perm(), func(out io.Writer) error {
+		_, err := out.Write(data)
+		return err
+	})
 }
 
 func removeRCMarker(path string, fish bool) bool {
@@ -471,5 +558,5 @@ func removeRCMarker(path string, fish bool) bool {
 	}
 	s = replaceRCMarker(s, "")
 	s = strings.TrimRight(s, "\n") + "\n"
-	return os.WriteFile(path, []byte(s), 0o644) == nil
+	return writeRC(path, []byte(s)) == nil
 }
