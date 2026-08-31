@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="assets/trustmebro-header.svg" alt="TrustMeBro: LLM tool output proxy" width="100%">
+  <img src="assets/trustmebro-header.png" alt="TrustMeBro: LLM tool output proxy" width="100%">
 
   <br>
 
